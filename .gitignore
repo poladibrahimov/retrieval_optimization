@@ -1,0 +1,14 @@
+/**/__pycache__
+.env
+env
+venv
+data_process.ipynb
+input_data.jsonl
+app.log
+data
+data_validator.ipynb
+cancel_batchs.ipynb
+logs/
+*.log
+*.db
+*.ipynb
