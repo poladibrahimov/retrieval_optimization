@@ -3,13 +3,16 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Dict, Any
+from tqdm import tqdm  # Import tqdm if not already imported.
+from worker_pool import OptimizerWorkerPool
+
 
 import httpx
 import numpy as np
 import optuna
 from vespa.application import Vespa, VespaAsync
 
-from config import VESPA_PORT, VESPA_URL, STUDY_NAME, STUDY_STORAGE_POSTGRES_URL, SQLITE_URL
+from config import VESPA_APP_NAME, VESPA_PORT, VESPA_URL, STUDY_NAME, STUDY_STORAGE_POSTGRES_URL, SQLITE_URL
 from repository import QueryRepository, QueryData
 from utils import configure_logger, process_single_result, QueryResult, RankingMetrics
 import logging
@@ -49,8 +52,6 @@ class VespaRankingOptimizer:
         self.query_condition = " or ".join(self.cos_sim_formulas)
         self.worker_pool = None
         if self.n_parallel > 1:
-            from worker_pool import OptimizerWorkerPool
-
             # Use the provided repository instance
             self.worker_pool = OptimizerWorkerPool(
                 vespa_url=self.vespa_app.url,
@@ -70,7 +71,7 @@ class VespaRankingOptimizer:
 
     def build_query_body(self, embedding: str, weights: Dict[str, float]) -> Dict:
         return {
-            "yql": f"select * from chunks where {self.query_condition}",
+            "yql": f"select * from {VESPA_APP_NAME} where {self.query_condition}",
             "input.query(q)": embedding,
             "ranking": "semantic",
             "ranking.features.query(title_weight)": weights["title_weight"],
@@ -137,7 +138,6 @@ class VespaRankingOptimizer:
             query_queue.put_nowait(q)
 
         async with self.vespa_app.asyncio(connections=10, timeout=timeout) as session:
-            from tqdm import tqdm  # Import tqdm if not already imported.
             progress = tqdm(total=len(queries), desc=f"[PID:{os.getpid()}] Processing")
             workers = [
                 asyncio.create_task(self._async_worker(query_queue, weights, session, progress, results, process_logger))
