@@ -130,7 +130,7 @@ def fetch_queries_from_db(url: str, offset: int, limit: int) -> List[Tuple[str, 
     """
     sql = """
         SELECT query, doc_id, chunk_id, embedding
-        FROM openai_queries
+        FROM optuna_v1
         WHERE query_length IN ('4', 'n')
         ORDER BY id
         LIMIT %s OFFSET %s
@@ -159,7 +159,7 @@ def count_filtered_queries(url: str) -> Optional[int]:
     """
     sql = """
         SELECT COUNT(*)
-        FROM openai_queries
+        FROM optuna_v1
         WHERE query_length IN ('4', 'n')
     """
     try:

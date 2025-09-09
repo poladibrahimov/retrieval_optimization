@@ -1,7 +1,6 @@
 import os
 import uuid
 from dotenv import load_dotenv
-from prompts.prompt_n import *
 
 load_dotenv(override=True)
 

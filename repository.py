@@ -9,6 +9,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import psycopg2
 from sqlalchemy import create_engine, Column, Integer, String, func
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION
+from sqlalchemy.types import JSON
 
 # Create a dedicated logger for this module.
 repo_logger = logging.getLogger("QueryRepository")
@@ -27,16 +30,16 @@ class Base(DeclarativeBase):
 
 # Define the ORM model for the openai_queries table.
 class OpenAIQuery(Base):
-    __tablename__ = 'openai_queries'
+    __tablename__ = 'optuna_v1'
     id = Column(Integer, primary_key=True)
     query = Column(String, nullable=False)
-    doc_id = Column(String, nullable=False)
-    chunk_id = Column(String, nullable=False)
-    embedding = Column(String, nullable=False)
-    query_length = Column(String, nullable=False)
+    query_length = Column(String, nullable=False)  # e.g., "4", "n"
+    full_ids = Column(JSON, nullable=True)  # Comma-separated list of full document IDs
+    scores = Column(JSON, nullable=True)  # Comma-separated list of scores
+    embedding = Column(JSON)
 
 # Define a namedtuple for returning query data.
-QueryData = namedtuple('QueryData', ['query', 'doc_id', 'chunk_id', 'embedding'])
+QueryData = namedtuple('QueryData', ['query', 'full_ids', 'scores', 'embedding'])
 
 class QueryRepository:
     def __init__(self, sqlite_url: str, pg_url: Optional[str] = None, filter_query: bool = True, query_lengths: List[str] = ["4", "n"]) -> None:
@@ -99,7 +102,7 @@ class QueryRepository:
             rows = query.all()
             repo_logger.debug("Fetched %d queries from local database", len(rows))
             return [
-                QueryData(query=row.query, doc_id=row.doc_id, chunk_id=row.chunk_id, embedding=row.embedding)
+                QueryData(query=row.query, full_ids=row.full_ids, scores = row.scores, embedding=row.embedding)
                 for row in rows
             ]
     
@@ -131,7 +134,7 @@ class QueryRepository:
         conn_pg = psycopg2.connect(self.pg_url, connect_timeout=10)
         try:
             with conn_pg.cursor() as cur:
-                count_query = f"SELECT COUNT(*) FROM openai_queries {where_clause};"
+                count_query = f"SELECT COUNT(*) FROM optuna_v1 {where_clause};"
                 repo_logger.debug("Executing count query: %s", count_query.strip())
                 cur.execute(count_query)
                 row = cur.fetchone()
@@ -158,8 +161,8 @@ class QueryRepository:
                     offset = chunk_index * chunk_size
                     # Now include the 'id' column as the first column.
                     query = f"""
-                        SELECT id, query, doc_id, chunk_id, embedding, query_length
-                        FROM openai_queries
+                        SELECT id, query, query_length, full_ids, scores, embedding
+                        FROM optuna_v1
                         {where_clause}
                         ORDER BY id
                         LIMIT {chunk_size} OFFSET {offset};
@@ -188,10 +191,10 @@ class QueryRepository:
                 new_query = OpenAIQuery(
                     id=row[0],
                     query=row[1],
-                    doc_id=row[2],
-                    chunk_id=row[3],
-                    embedding=row[4],
-                    query_length=row[5]
+                    query_length=row[2],
+                    full_ids=row[3],
+                    scores=row[4],
+                    embedding=row[5],
                 )
                 session.add(new_query)
                 count += 1
