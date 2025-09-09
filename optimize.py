@@ -4,7 +4,6 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Any
 from tqdm import tqdm  # Import tqdm if not already imported.
-from worker_pool import OptimizerWorkerPool
 
 
 import httpx
@@ -52,6 +51,7 @@ class VespaRankingOptimizer:
         self.query_condition = " or ".join(self.cos_sim_formulas)
         self.worker_pool = None
         if self.n_parallel > 1:
+            from worker_pool import OptimizerWorkerPool
             # Use the provided repository instance
             self.worker_pool = OptimizerWorkerPool(
                 vespa_url=self.vespa_app.url,
