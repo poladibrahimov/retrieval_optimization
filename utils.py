@@ -12,8 +12,8 @@ import sqlite3
 @dataclass
 class QueryResult:
     query: str
-    expected_doc_id: str
-    expected_chunk_id: str
+    full_ids: List[str]
+    scores: List[float]
     hits: List[Dict]
 
 
@@ -41,7 +41,6 @@ def _calculate_ndcg(relevance_scores: List[float], k: Optional[int] = None) -> f
     ndcg = dcg / idcg if idcg > 0 else 0.0
     return ndcg
 
-
 def process_single_result(result: QueryResult) -> RankingMetrics:
     """
     Process a single QueryResult to compute individual metrics.
@@ -49,34 +48,36 @@ def process_single_result(result: QueryResult) -> RankingMetrics:
     Returns:
         A tuple containing (mrr, recall_1, recall_3, recall_5, ndcg_5, ndcg_10)
     """
-    # Calculate position of correct document
-    correct_pos = None
-    for i, hit in enumerate(result.hits, 1):
-        if (str(hit["fields"]["doc_id"]) == str(result.expected_doc_id) and
-                str(hit["fields"]["chunk_id"]) == str(result.expected_chunk_id)):
-            correct_pos = i
+    labels = []
+    for hint in result.hits:
+        chunk_id = str(hint["fields"]["chunk_id"])
+        if chunk_id in result.full_ids:  # make sure full_ids is iterable
+            idx = result.full_ids.index(chunk_id)  # get position in the list
+            labels.append(result.scores[idx])      # append matching score
+        else:
+            labels.append(0.0)  # optional: if not found, default to 0
+    # print(f"Labels for query '{result.query}': {labels}")
+    # MRR
+    mrr = 0.0
+    for i, rel in enumerate(labels, start=1):
+        if rel > 0:   # found first relevant
+            mrr = 1.0 / i
             break
 
-    # MRR
-    mrr = 1.0 / correct_pos if correct_pos else 0.0
-
     # Recall@K
-    recall_1 = 1.0 if correct_pos == 1 else 0.0
-    recall_3 = 1.0 if correct_pos and correct_pos <= 3 else 0.0
-    recall_5 = 1.0 if correct_pos and correct_pos <= 5 else 0.0
+    total_relevant = sum(1 for rel in labels if rel > 0)
+    recall_1 = sum(1 for rel in labels[:1] if rel > 0) / total_relevant if total_relevant else 0.0
+    recall_3 = sum(1 for rel in labels[:3] if rel > 0) / total_relevant if total_relevant else 0.0
+    recall_5 = sum(1 for rel in labels[:5] if rel > 0) / total_relevant if total_relevant else 0.0
+
 
     # NDCG@K
-    relevance_5 = [1.0 if i < 5 and (i + 1) == correct_pos else 0.0
-                   for i in range(min(5, len(result.hits)))]
-    relevance_10 = [1.0 if i < 10 and (i + 1) == correct_pos else 0.0
-                    for i in range(min(10, len(result.hits)))]
-
-    ndcg_5 = _calculate_ndcg(relevance_5)
-    ndcg_10 = _calculate_ndcg(relevance_10)
+    ndcg_5 = _calculate_ndcg(labels,5)
+    ndcg_10 = _calculate_ndcg(labels,10)
+    #print ranking metrics  
+    # print(f"Metrics for query '{result.query}': MRR={mrr}, Recall@1={recall_1}, Recall@3={recall_3}, Recall@5={recall_5}, NDCG@5={ndcg_5}, NDCG@10={ndcg_10}")
 
     return RankingMetrics(mrr, recall_1, recall_3, recall_5, ndcg_5, ndcg_10)
-
-
 
 def configure_logger(optimizer_id: Any | None = None) -> logging.Logger:
     # Ensure logs directory exists
@@ -113,9 +114,6 @@ def configure_logger(optimizer_id: Any | None = None) -> logging.Logger:
 
     return logger
 
-
-
-
 def fetch_queries_from_db(url: str, offset: int, limit: int) -> List[Tuple[str, str, str, str]]:
     """
     Fetch queries from the PostgreSQL database filtering for query_length '4' or 'n'.
@@ -147,8 +145,6 @@ def fetch_queries_from_db(url: str, offset: int, limit: int) -> List[Tuple[str, 
     finally:
         if 'conn' in locals():
             conn.close()
-
-
 
 def count_filtered_queries(url: str) -> Optional[int]:
     """

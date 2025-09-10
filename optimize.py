@@ -83,11 +83,11 @@ class VespaRankingOptimizer:
             "ranking.features.query(sp_max_sentence_weight)": weights["sp_max_sentence_weight"],
             # Page Rank
             "ranking.features.query(pagerank_weight)": weights["pagerank_weight"],
-            "ranking.features.query(enable_pagerank)": weights["enable_pagerank"],
+            "ranking.features.query(enable_pagerank)": 1,
             "ranking.features.query(freshness_weight)":weights["freshness_weight"], 
             "presentation.format.tensors": "short-value",
             "timeout": 40,
-            "hits": 10,
+            "hits": 20,
             "summary": "minimal"
         }
 
@@ -108,8 +108,8 @@ class VespaRankingOptimizer:
                 response = await session.query(query_body)
                 q_result = QueryResult(
                     query=query.query,
-                    expected_doc_id=query.doc_id,
-                    expected_chunk_id=query.chunk_id,
+                    full_ids = query.full_ids,
+                    scores = query.scores,
                     hits=response.hits,
                 )
                 metric = await asyncio.to_thread(process_single_result, q_result)
@@ -174,7 +174,6 @@ class VespaRankingOptimizer:
             "sp_th_weight": trial.suggest_float("sp_th_weight", 0.0, 1, step=0.001),
             "sp_max_sentence_weight": trial.suggest_float("sp_max_sentence_weight", 0.0, 1, step=0.001),
             "pagerank_weight": trial.suggest_float("pagerank_weight", 0.0, 1, step=0.001),
-            "enable_pagerank": trial.suggest_categorical("enable_pagerank", [0, 1]),
             "freshness_weight": trial.suggest_float("freshness_weight", 0.0, 1, step=0.001)
         }
         total = sum(raw_weights.values())
